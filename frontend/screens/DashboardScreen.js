@@ -116,7 +116,10 @@ export default function ArcKhe_DashboardScreen({ navigation }) {
     ArcKhe_setAnalyzing(true);
     ArcKhe_setClusters(null);
     try {
-      const ArcKhe_res = await fetch(`${ArcKhe_API_URL}/api/employees/salary-clusters`);
+            const [ArcKhe_res] = await Promise.all([
+        fetch(`${ArcKhe_API_URL}/api/employees/salary-clusters`),
+        new Promise((resolve) => setTimeout(resolve, 800)), // ให้เห็น loading อย่างน้อย 0.8 วินาที
+      ]);
       const ArcKhe_data = await ArcKhe_res.json().catch(() => ({}));
       if (!ArcKhe_res.ok || !ArcKhe_data.success) {
         ArcKhe_showAlert('Error', ArcKhe_data.message || 'Cannot analyze salary structure');
@@ -203,7 +206,7 @@ export default function ArcKhe_DashboardScreen({ navigation }) {
       data={ArcKhe_employees}
       keyExtractor={(ArcKhe_item) => ArcKhe_item.id}
       renderItem={ArcKhe_renderItem}
-      ListHeaderComponent={ArcKhe_renderHeader}
+      ListHeaderComponent={ArcKhe_renderHeader()}
       ListFooterComponent={
         <TouchableOpacity style={[ArcKhe_styles.primaryBtn, { backgroundColor: '#666', marginTop: 8 }]} onPress={() => navigation.replace('Login')}>
           <Text style={ArcKhe_styles.btnText}>Logout</Text>
