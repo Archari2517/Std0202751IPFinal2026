@@ -213,7 +213,49 @@ ArcKhe_app.delete('/api/employees/:id', async (ArcKhe_req, ArcKhe_res) => {
     ArcKhe_res.status(500).json({ success: false, message: 'Server error' });
   }
 });
+// ---------- EDIT employee (name, position, salary) ----------
+ArcKhe_app.put('/api/employees/:id', async (ArcKhe_req, ArcKhe_res) => {
+  try {
+    const ArcKhe_id = ArcKhe_req.params.id;
+    if (!ArcKhe_isValidId(ArcKhe_id)) {
+      return ArcKhe_res.status(400).json({ success: false, message: 'Invalid id' });
+    }
 
+    const ArcKhe_body = ArcKhe_req.body || {};
+    const ArcKhe_name = typeof ArcKhe_body.name === 'string' ? ArcKhe_body.name.trim() : '';
+    const ArcKhe_position = typeof ArcKhe_body.position === 'string' ? ArcKhe_body.position.trim() : '';
+    const ArcKhe_rawSalary = ArcKhe_body.salary;
+    const ArcKhe_salary =
+      ArcKhe_rawSalary === '' || ArcKhe_rawSalary === null || ArcKhe_rawSalary === undefined
+        ? NaN
+        : Number(ArcKhe_rawSalary);
+
+    if (!ArcKhe_name || !ArcKhe_position || ArcKhe_rawSalary === '' || ArcKhe_rawSalary == null) {
+      return ArcKhe_res.status(400).json({ success: false, message: 'name, position and salary are required' });
+    }
+    if (!Number.isFinite(ArcKhe_salary) || ArcKhe_salary <= 0 || ArcKhe_salary > 9999999999) {
+      return ArcKhe_res.status(400).json({ success: false, message: 'salary must be a positive number' });
+    }
+    if (ArcKhe_name.length > 100 || ArcKhe_position.length > 100) {
+      return ArcKhe_res.status(400).json({ success: false, message: 'name/position too long (max 100)' });
+    }
+
+    const [ArcKhe_found] = await ArcKhe_pool.query('SELECT ArcKhe_id FROM ArcKhe_employees WHERE ArcKhe_id = ?', [ArcKhe_id]);
+    if (ArcKhe_found.length === 0) {
+      return ArcKhe_res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+
+    await ArcKhe_pool.query(
+      'UPDATE ArcKhe_employees SET ArcKhe_name = ?, ArcKhe_position = ?, ArcKhe_salary = ? WHERE ArcKhe_id = ?',
+      [ArcKhe_name, ArcKhe_position, ArcKhe_salary, ArcKhe_id]
+    );
+    const [ArcKhe_rows] = await ArcKhe_pool.query('SELECT * FROM ArcKhe_employees WHERE ArcKhe_id = ?', [ArcKhe_id]);
+    ArcKhe_res.json(ArcKhe_formatRow(ArcKhe_rows[0]));
+  } catch (ArcKhe_err) {
+    console.error(ArcKhe_err);
+    ArcKhe_res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
 // ---------- start ----------
 ArcKhe_initDb()
   .then(() => {

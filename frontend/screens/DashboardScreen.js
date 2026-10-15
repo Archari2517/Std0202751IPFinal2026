@@ -1,34 +1,23 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, FlatList, Alert,
-  ActivityIndicator, StyleSheet, Platform,
-} from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, FlatList, ActivityIndicator, StyleSheet } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { ArcKhe_API_URL } from '../config';
+import {
+  ArcKhe_COLORS, ArcKhe_MAX_WIDTH, ArcKhe_HardBox, ArcKhe_Button, ArcKhe_Background,
+  ArcKhe_AppBar, ArcKhe_Pill, ArcKhe_showAlert, ArcKhe_confirm,
+} from '../components/ArcKhe_UI';
+import ArcKhe_SalaryChart from '../components/ArcKhe_SalaryChart';
 
-function ArcKhe_showAlert(ArcKhe_title, ArcKhe_message) {
-  if (Platform.OS === 'web') window.alert(`${ArcKhe_title}\n${ArcKhe_message}`);
-  else Alert.alert(ArcKhe_title, ArcKhe_message);
-}
-
-function ArcKhe_confirm(ArcKhe_title, ArcKhe_message, ArcKhe_onYes) {
-  if (Platform.OS === 'web') {
-    if (window.confirm(`${ArcKhe_title}\n${ArcKhe_message}`)) ArcKhe_onYes();
-    return;
-  }
-  Alert.alert(ArcKhe_title, ArcKhe_message, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Delete', style: 'destructive', onPress: ArcKhe_onYes },
-  ]);
-}
+const ArcKhe_C = ArcKhe_COLORS;
+const ArcKhe_tierFills = [ArcKhe_C.yellow, ArcKhe_C.green, ArcKhe_C.lilac];
+const ArcKhe_avatarFills = [ArcKhe_C.yellow, ArcKhe_C.green, ArcKhe_C.lilac, ArcKhe_C.pink];
 
 export default function ArcKhe_DashboardScreen({ navigation }) {
   const [ArcKhe_employees, ArcKhe_setEmployees] = useState([]);
   const [ArcKhe_listLoading, ArcKhe_setListLoading] = useState(true);
-  const [ArcKhe_name, ArcKhe_setName] = useState('');
-  const [ArcKhe_position, ArcKhe_setPosition] = useState('');
-  const [ArcKhe_salary, ArcKhe_setSalary] = useState('');
   const [ArcKhe_clusters, ArcKhe_setClusters] = useState(null);
   const [ArcKhe_analyzing, ArcKhe_setAnalyzing] = useState(false);
+  const [ArcKhe_showChart, ArcKhe_setShowChart] = useState(false); // chart is optional: only shown when the user taps the button
 
   const ArcKhe_loadEmployees = useCallback(async () => {
     try {
@@ -42,42 +31,13 @@ export default function ArcKhe_DashboardScreen({ navigation }) {
     }
   }, []);
 
-  useEffect(() => {
-    ArcKhe_loadEmployees();
-  }, [ArcKhe_loadEmployees]);
-
-  const ArcKhe_handleAdd = async () => {
-    const ArcKhe_nameTrim = ArcKhe_name.trim();
-    const ArcKhe_positionTrim = ArcKhe_position.trim();
-    const ArcKhe_salaryNum = Number(ArcKhe_salary);
-    if (!ArcKhe_nameTrim || !ArcKhe_positionTrim || !ArcKhe_salary.trim()) {
-      ArcKhe_showAlert('Validation', 'Please fill in name, position and salary');
-      return;
-    }
-    if (!Number.isFinite(ArcKhe_salaryNum) || ArcKhe_salaryNum <= 0) {
-      ArcKhe_showAlert('Validation', 'Salary must be a positive number');
-      return;
-    }
-    try {
-      const ArcKhe_res = await fetch(`${ArcKhe_API_URL}/api/employees`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: ArcKhe_nameTrim, position: ArcKhe_positionTrim, salary: ArcKhe_salaryNum }),
-      });
-      const ArcKhe_data = await ArcKhe_res.json().catch(() => ({}));
-      if (!ArcKhe_res.ok) {
-        ArcKhe_showAlert('Error', ArcKhe_data.message || 'Cannot add employee');
-        return;
-      }
-      ArcKhe_setEmployees((ArcKhe_prev) => [...ArcKhe_prev, ArcKhe_data]);
-      ArcKhe_setName('');
-      ArcKhe_setPosition('');
-      ArcKhe_setSalary('');
-      ArcKhe_setClusters(null); // ข้อมูลเปลี่ยน ผลวิเคราะห์เดิมไม่ตรงแล้ว
-    } catch (ArcKhe_err) {
-      ArcKhe_showAlert('Network error', 'Cannot connect to the server');
-    }
-  };
+  // reload every time this screen is shown (first load + coming back from Add Employee)
+  useFocusEffect(
+    useCallback(() => {
+      ArcKhe_loadEmployees();
+      ArcKhe_setClusters(null); // data may have changed, old analysis is stale
+    }, [ArcKhe_loadEmployees])
+  );
 
   const ArcKhe_handleToggle = async (ArcKhe_id) => {
     try {
@@ -115,10 +75,11 @@ export default function ArcKhe_DashboardScreen({ navigation }) {
   const ArcKhe_handleAnalyze = async () => {
     ArcKhe_setAnalyzing(true);
     ArcKhe_setClusters(null);
+    ArcKhe_setShowChart(false);
     try {
-            const [ArcKhe_res] = await Promise.all([
+      const [ArcKhe_res] = await Promise.all([
         fetch(`${ArcKhe_API_URL}/api/employees/salary-clusters`),
-        new Promise((resolve) => setTimeout(resolve, 800)), // ให้เห็น loading อย่างน้อย 0.8 วินาที
+        new Promise((resolve) => setTimeout(resolve, 800)), // keep the loading indicator visible for at least 0.8s
       ]);
       const ArcKhe_data = await ArcKhe_res.json().catch(() => ({}));
       if (!ArcKhe_res.ok || !ArcKhe_data.success) {
@@ -133,105 +94,179 @@ export default function ArcKhe_DashboardScreen({ navigation }) {
     }
   };
 
+  const ArcKhe_activeCount = ArcKhe_employees.filter((e) => e.status === 'Active').length;
+  const ArcKhe_leaveCount = ArcKhe_employees.length - ArcKhe_activeCount;
+
   const ArcKhe_renderHeader = () => (
     <View>
-      <Text style={ArcKhe_styles.sectionTitle}>Add Employee</Text>
-      <TextInput style={ArcKhe_styles.input} placeholder="Name" value={ArcKhe_name} onChangeText={ArcKhe_setName} />
-      <TextInput style={ArcKhe_styles.input} placeholder="Position" value={ArcKhe_position} onChangeText={ArcKhe_setPosition} />
-      <TextInput
-        style={ArcKhe_styles.input}
-        placeholder="Salary"
-        keyboardType="numeric"
-        value={ArcKhe_salary}
-        onChangeText={ArcKhe_setSalary}
-      />
-      <TouchableOpacity style={ArcKhe_styles.primaryBtn} onPress={ArcKhe_handleAdd}>
-        <Text style={ArcKhe_styles.btnText}>Add Employee</Text>
-      </TouchableOpacity>
+      {/* summary */}
+      <View style={ArcKhe_styles.statRow}>
+        {[
+          ['Total', ArcKhe_employees.length, ArcKhe_C.yellow],
+          ['Active', ArcKhe_activeCount, ArcKhe_C.green],
+          ['On Leave', ArcKhe_leaveCount, ArcKhe_C.white],
+        ].map(([label, value, fill]) => (
+          <ArcKhe_HardBox key={label} fill={fill} radius={16} offset={4} style={{ flex: 1 }} innerStyle={ArcKhe_styles.statInner}>
+            <Text style={ArcKhe_styles.statNum}>{value}</Text>
+            <Text style={ArcKhe_styles.statLabel}>{label}</Text>
+          </ArcKhe_HardBox>
+        ))}
+      </View>
 
-      <TouchableOpacity style={[ArcKhe_styles.primaryBtn, ArcKhe_styles.analyzeBtn]} onPress={ArcKhe_handleAnalyze} disabled={ArcKhe_analyzing}>
-        <Text style={ArcKhe_styles.btnText}>Analyze Salary Structure</Text>
-      </TouchableOpacity>
+      {/* salary analysis card */}
+      <ArcKhe_HardBox radius={22} offset={6} style={{ marginBottom: 18 }} innerStyle={{ padding: 18 }}>
+        <ArcKhe_Pill label="K-Means · 3 tiers" fill={ArcKhe_C.lilac} style={{ marginBottom: 8 }} />
+        <Text style={ArcKhe_styles.cardTitle}>Salary Analysis</Text>
+        <Text style={ArcKhe_styles.cardSub}>Group everyone's salary into 3 tiers automatically.</Text>
 
-      {ArcKhe_analyzing && <ActivityIndicator size="large" color="#2f6fed" style={{ marginVertical: 12 }} />}
+        <ArcKhe_Button label="Analyze Salary Structure" onPress={ArcKhe_handleAnalyze} disabled={ArcKhe_analyzing} style={{ marginTop: 14 }} />
 
-      {ArcKhe_clusters && (
-        <View>
-          <Text style={ArcKhe_styles.sectionTitle}>Salary Tiers</Text>
-          <View style={ArcKhe_styles.clusterRow}>
-            {ArcKhe_clusters.map((c) => (
-              <View key={c.group} style={ArcKhe_styles.clusterCard}>
-                <Text style={ArcKhe_styles.clusterTier}>{c.group}</Text>
-                <Text style={ArcKhe_styles.clusterCount}>{c.count}</Text>
-                <Text style={ArcKhe_styles.clusterLabel}>employees</Text>
-                <Text style={ArcKhe_styles.clusterSalary}>{Number(c.centroid).toLocaleString()}</Text>
-                <Text style={ArcKhe_styles.clusterLabel}>avg salary</Text>
-              </View>
+        {ArcKhe_analyzing && <ActivityIndicator size="large" color={ArcKhe_C.blue} style={{ marginTop: 16 }} />}
+
+        {ArcKhe_clusters && (
+          <View style={ArcKhe_styles.tierRow}>
+            {ArcKhe_clusters.map((c, i) => (
+              <ArcKhe_HardBox
+                key={c.group}
+                fill={ArcKhe_tierFills[i % 3]}
+                radius={14}
+                offset={3}
+                style={{ flex: 1 }}
+                innerStyle={ArcKhe_styles.tierInner}
+              >
+                <Text style={ArcKhe_styles.tierName}>{c.group}</Text>
+                <Text style={ArcKhe_styles.tierCount}>{c.count}</Text>
+                <Text style={ArcKhe_styles.tierLabel}>employees</Text>
+                <Text style={ArcKhe_styles.tierSalary}>{Number(c.centroid).toLocaleString()}</Text>
+                <Text style={ArcKhe_styles.tierLabel}>avg salary</Text>
+              </ArcKhe_HardBox>
             ))}
           </View>
+        )}
+
+        {ArcKhe_clusters && (
+          <ArcKhe_Button
+            small
+            label={ArcKhe_showChart ? 'Hide Chart ▴' : 'Show Chart ▾'}
+            color={ArcKhe_C.yellow}
+            textColor={ArcKhe_C.ink}
+            onPress={() => ArcKhe_setShowChart((v) => !v)}
+            style={{ marginTop: 16, alignSelf: 'flex-start' }}
+          />
+        )}
+        {ArcKhe_clusters && ArcKhe_showChart && <ArcKhe_SalaryChart clusters={ArcKhe_clusters} employees={ArcKhe_employees} />}
+      </ArcKhe_HardBox>
+
+      {/* list title + add button */}
+      <View style={ArcKhe_styles.listHeader}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={ArcKhe_styles.sectionTitle}>Employees</Text>
+          <ArcKhe_Pill label={String(ArcKhe_employees.length)} fill={ArcKhe_C.white} style={{ marginLeft: 8 }} />
         </View>
-      )}
-
-      <Text style={ArcKhe_styles.sectionTitle}>Employees ({ArcKhe_employees.length})</Text>
-      {ArcKhe_listLoading && <ActivityIndicator style={{ marginVertical: 12 }} />}
-    </View>
-  );
-
-  const ArcKhe_renderItem = ({ item: ArcKhe_item }) => (
-    <View style={ArcKhe_styles.card}>
-      <Text style={ArcKhe_styles.cardName}>{ArcKhe_item.name}</Text>
-      <Text>{ArcKhe_item.position}</Text>
-      <Text>
-        Status:{' '}
-        <Text style={{ color: ArcKhe_item.status === 'Active' ? '#1a8f3c' : '#d9822b', fontWeight: 'bold' }}>
-          {ArcKhe_item.status}
-        </Text>
-      </Text>
-      <Text>Salary: {Number(ArcKhe_item.salary).toLocaleString()}</Text>
-      <View style={ArcKhe_styles.btnRow}>
-        <TouchableOpacity style={[ArcKhe_styles.smallBtn, { backgroundColor: '#2f6fed' }]} onPress={() => ArcKhe_handleToggle(ArcKhe_item.id)}>
-          <Text style={ArcKhe_styles.btnText}>Toggle Status</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[ArcKhe_styles.smallBtn, { backgroundColor: '#d33' }]} onPress={() => ArcKhe_handleDelete(ArcKhe_item.id)}>
-          <Text style={ArcKhe_styles.btnText}>Delete</Text>
-        </TouchableOpacity>
+        <ArcKhe_Button small label="+ Add Employee" onPress={() => navigation.navigate('AddEmployee')} />
       </View>
+      {ArcKhe_listLoading && <ActivityIndicator style={{ marginVertical: 12 }} color={ArcKhe_C.ink} />}
     </View>
   );
+
+  const ArcKhe_renderItem = ({ item: ArcKhe_item, index: ArcKhe_index }) => {
+    const ArcKhe_isActive = ArcKhe_item.status === 'Active';
+    return (
+      <ArcKhe_HardBox radius={18} offset={4} style={{ marginBottom: 12 }} innerStyle={ArcKhe_styles.empInner}>
+        <View style={[ArcKhe_styles.avatar, { backgroundColor: ArcKhe_avatarFills[ArcKhe_index % 4] }]}>
+          <Text style={ArcKhe_styles.avatarText}>{(ArcKhe_item.name || '?').charAt(0).toUpperCase()}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <View style={ArcKhe_styles.empTop}>
+            <Text style={ArcKhe_styles.empName} numberOfLines={1}>{ArcKhe_item.name}</Text>
+            <ArcKhe_Pill label={ArcKhe_item.status} fill={ArcKhe_isActive ? ArcKhe_C.green : ArcKhe_C.pink} style={{ marginLeft: 8 }} />
+          </View>
+          <Text style={ArcKhe_styles.empPos}>{ArcKhe_item.position}</Text>
+          <Text style={ArcKhe_styles.empSalary}>Salary: {Number(ArcKhe_item.salary).toLocaleString()}</Text>
+          <View style={ArcKhe_styles.btnRow}>
+            <ArcKhe_Button
+              small
+              label="Toggle Status"
+              color={ArcKhe_C.yellow}
+              textColor={ArcKhe_C.ink}
+              onPress={() => ArcKhe_handleToggle(ArcKhe_item.id)}
+              style={{ marginRight: 8 }}
+            />
+            <ArcKhe_Button
+              small
+              label="Edit"
+              color={ArcKhe_C.white}
+              textColor={ArcKhe_C.ink}
+              onPress={() => navigation.navigate('AddEmployee', { employee: ArcKhe_item })}
+              style={{ marginRight: 8 }}
+            />
+            <ArcKhe_Button
+              small
+              label="Delete"
+              color={ArcKhe_C.pink}
+              textColor={ArcKhe_C.ink}
+              onPress={() => ArcKhe_handleDelete(ArcKhe_item.id)}
+            />
+          </View>
+        </View>
+      </ArcKhe_HardBox>
+    );
+  };
 
   return (
-    <FlatList
-      style={ArcKhe_styles.container}
-      contentContainerStyle={{ padding: 16 }}
-      data={ArcKhe_employees}
-      keyExtractor={(ArcKhe_item) => ArcKhe_item.id}
-      renderItem={ArcKhe_renderItem}
-      ListHeaderComponent={ArcKhe_renderHeader()}
-      ListFooterComponent={
-        <TouchableOpacity style={[ArcKhe_styles.primaryBtn, { backgroundColor: '#666', marginTop: 8 }]} onPress={() => navigation.replace('Login')}>
-          <Text style={ArcKhe_styles.btnText}>Logout</Text>
-        </TouchableOpacity>
-      }
-      keyboardShouldPersistTaps="handled"
-    />
+    <ArcKhe_Background>
+      <ArcKhe_AppBar
+        title="HR Manager"
+        subtitle="Salary Analytics Dashboard"
+        right={<ArcKhe_Button small label="Logout" color={ArcKhe_C.white} textColor={ArcKhe_C.ink} onPress={() => navigation.replace('Login')} />}
+      />
+      <FlatList
+        style={{ flex: 1 }}
+        contentContainerStyle={ArcKhe_styles.content}
+        data={ArcKhe_employees}
+        keyExtractor={(ArcKhe_item) => ArcKhe_item.id}
+        renderItem={ArcKhe_renderItem}
+        ListHeaderComponent={ArcKhe_renderHeader()}
+        ListEmptyComponent={
+          !ArcKhe_listLoading ? <Text style={ArcKhe_styles.empty}>No employees yet. Tap "+ Add Employee" to start.</Text> : null
+        }
+        keyboardShouldPersistTaps="handled"
+      />
+    </ArcKhe_Background>
   );
 }
 
 const ArcKhe_styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6fb' },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 16, marginBottom: 8 },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#ccd', borderRadius: 8, padding: 10, marginBottom: 8 },
-  primaryBtn: { backgroundColor: '#2f6fed', padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 4 },
-  analyzeBtn: { backgroundColor: '#7a3fe0', marginTop: 12 },
-  btnText: { color: '#fff', fontWeight: 'bold' },
-  card: { backgroundColor: '#fff', borderRadius: 10, padding: 12, marginBottom: 10, elevation: 2 },
-  cardName: { fontSize: 16, fontWeight: 'bold' },
-  btnRow: { flexDirection: 'row', marginTop: 8 },
-  smallBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6, marginRight: 8 },
-  clusterRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  clusterCard: { flex: 1, backgroundColor: '#fff', borderRadius: 10, padding: 10, marginHorizontal: 3, alignItems: 'center', elevation: 2 },
-  clusterTier: { fontWeight: 'bold', color: '#7a3fe0', marginBottom: 4 },
-  clusterCount: { fontSize: 24, fontWeight: 'bold' },
-  clusterSalary: { fontSize: 16, fontWeight: 'bold', marginTop: 6 },
-  clusterLabel: { fontSize: 11, color: '#777' },
+  content: { padding: 16, paddingTop: 20, paddingBottom: 40, width: '100%', maxWidth: ArcKhe_MAX_WIDTH, alignSelf: 'center' },
+
+  statRow: { flexDirection: 'row', marginBottom: 16 },
+  statInner: { paddingVertical: 12, alignItems: 'center' },
+  statNum: { fontSize: 26, fontWeight: '900', color: '#111' },
+  statLabel: { fontSize: 12, fontWeight: '700', color: '#111' },
+
+  cardTitle: { fontSize: 22, fontWeight: '900', color: '#111' },
+  cardSub: { color: '#555', marginTop: 2 },
+
+  tierRow: { flexDirection: 'row', marginTop: 18 },
+  tierInner: { paddingVertical: 10, paddingHorizontal: 4, alignItems: 'center' },
+  tierName: { fontWeight: '900', color: '#111', marginBottom: 2 },
+  tierCount: { fontSize: 24, fontWeight: '900', color: '#111' },
+  tierSalary: { fontSize: 16, fontWeight: '900', marginTop: 6, color: '#111' },
+  tierLabel: { fontSize: 11, color: '#333' },
+
+  listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { fontSize: 20, fontWeight: '900', color: '#111' },
+
+  empInner: { flexDirection: 'row', padding: 14 },
+  avatar: {
+    width: 46, height: 46, borderRadius: 23, borderWidth: 2.5, borderColor: '#111',
+    alignItems: 'center', justifyContent: 'center', marginRight: 12,
+  },
+  avatarText: { fontWeight: '900', fontSize: 18, color: '#111' },
+  empTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  empName: { fontSize: 16, fontWeight: '900', color: '#111', flexShrink: 1 },
+  empPos: { color: '#444', marginTop: 2 },
+  empSalary: { color: '#111', fontWeight: '700', marginTop: 2 },
+  btnRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 },
+  empty: { textAlign: 'center', color: '#333', marginTop: 12 },
 });
